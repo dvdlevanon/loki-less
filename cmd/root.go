@@ -31,8 +31,9 @@ to quickly create a Cobra application.`,
 }
 
 func run() error {
+	requests := make(chan logstream.ChunkRequest, 0)
 	stream := logstream.NewLogStream()
-	streamer := loki.NewLokiStreamer(stream)
+	streamer := loki.NewLokiStreamer(stream, requests)
 	go streamer.Stream()
 
 	window, err := ui.NewMainWindow(stream)

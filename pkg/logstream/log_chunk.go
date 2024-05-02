@@ -50,3 +50,7 @@ func (c *LogChunk) SetLines(lines []LogLine) {
 	// sort
 	c.lines = lines
 }
+
+func (c *LogChunk) Viewable() bool {
+	return c.chunkType == RAM_CHUNK || c.chunkType == DISK_CHUNK
+}

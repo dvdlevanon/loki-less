@@ -5,21 +5,14 @@ import (
 	"github.com/gdamore/tcell"
 )
 
+func NewLogView(screen tcell.Screen, stream *logstream.LogStream) LogView {
+	return LogView{screen: screen, viewport: NewLogViewPort(stream)}
+}
+
 type LogView struct {
-	stream              *logstream.LogStream
 	screen              tcell.Screen
 	x, y, columns, rows int
-	chunk               *logstream.LogChunk
-	chunkOffset         int
-	autoScroll          bool
-}
-
-func (l *LogView) autoScrollOn() {
-	l.autoScroll = true
-}
-
-func (l *LogView) autoScrollOff() {
-	l.autoScroll = false
+	viewport            *LogViewPort
 }
 
 func (l *LogView) setSize(x, y, columns, rows int) {
@@ -30,43 +23,35 @@ func (l *LogView) setSize(x, y, columns, rows int) {
 }
 
 func (l *LogView) refresh() {
-	if l.chunk == nil {
-		l.chunk = l.stream.Head()
-		l.chunkOffset = 0
-	}
-
-	if l.chunk == nil {
-		return
-	}
-
-	if l.autoScroll {
-		l.scrollToLatest()
-	}
-
 	row := l.y
 	endRow := l.rows + l.y
-	curChunk := l.chunk
-	curOffset := l.chunkOffset
+	chunk, offset := l.viewport.refresh()
 
-	for {
-		if curChunk == nil || curChunk.Type() != logstream.RAM_CHUNK {
-			break
-		}
-
-		rowsTotal := l.showChunk(curChunk, curOffset, row)
-
-		if row >= endRow {
-			break
-		}
-
-		row = row + rowsTotal
-		curOffset = curOffset + rowsTotal
-
-		if curOffset >= len(curChunk.Lines()) {
-			curChunk = curChunk.Next()
-			curOffset = 0
+	for chunk != nil {
+		switch chunk.Type() {
+		case logstream.RAM_CHUNK:
+			chunk, offset, row = l.handleRamChunk(chunk, offset, row, endRow)
+		default:
+			return
 		}
 	}
+}
+
+func (l *LogView) handleRamChunk(chunk *logstream.LogChunk, offset int, row int, endRow int) (*logstream.LogChunk, int, int) {
+	rowsTotal := l.showChunk(chunk, offset, row)
+
+	if row >= endRow {
+		return nil, 0, 0
+	}
+
+	row = row + rowsTotal
+	offset = offset + rowsTotal
+
+	if offset >= len(chunk.Lines()) {
+		return chunk.Next(), 0, row
+	}
+
+	return chunk, offset, row
 }
 
 func (l *LogView) showChunk(chunk *logstream.LogChunk, chunkOffset int, startRow int) int {
@@ -82,49 +67,4 @@ func (l *LogView) showChunk(chunk *logstream.LogChunk, chunkOffset int, startRow
 	}
 
 	return l.rows
-}
-
-func (l *LogView) scrollToBeginning() {
-	l.chunk = l.stream.Head()
-	l.chunkOffset = 0
-}
-
-func (l *LogView) scrollToLatest() {
-	l.chunk = l.stream.Tail()
-	l.chunkOffset = l.chunk.LineCount()
-	shownLines := 0
-
-	for shownLines < l.rows {
-		l.chunkOffset = l.chunkOffset - 1
-		shownLines = shownLines + 1
-		if l.chunkOffset < 0 {
-			l.chunk = l.chunk.Prev()
-			l.chunkOffset = l.chunk.LineCount()
-		}
-	}
-}
-
-func (l *LogView) scroll(offset int) {
-	newOffset := l.chunkOffset + offset
-
-	for {
-		if newOffset < 0 {
-			if l.chunk.Prev() == nil {
-				return
-			}
-
-			l.chunk = l.chunk.Prev()
-			newOffset = l.chunk.LineCount() + newOffset
-		} else if newOffset > l.chunk.LineCount() {
-			if l.chunk.Next() == nil {
-				return
-			}
-			newOffset = newOffset - l.chunk.LineCount()
-			l.chunk = l.chunk.Next()
-		} else {
-			break
-		}
-	}
-
-	l.chunkOffset = newOffset
 }

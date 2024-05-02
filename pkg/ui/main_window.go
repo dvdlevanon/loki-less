@@ -20,7 +20,7 @@ func NewMainWindow(stream *logstream.LogStream) (*MainWindow, error) {
 	screen.EnableMouse()
 	screen.Clear()
 
-	logView := LogView{screen: screen, stream: stream}
+	logView := NewLogView(screen, stream)
 	result := &MainWindow{
 		screen:  screen,
 		logView: logView,
@@ -76,36 +76,36 @@ func (w *MainWindow) handleEvent(event tcell.Event) bool {
 			}
 
 			if event.Rune() == 'F' {
-				w.logView.autoScrollOn()
+				w.logView.viewport.AutoScrollOn()
 			}
 		}
 
 		if event.Key() == tcell.KeyCtrlC {
-			w.logView.autoScrollOff()
+			w.logView.viewport.AutoScrollOff()
 		}
 
 		if event.Key() == tcell.KeyDown {
-			w.logView.scroll(1)
+			w.logView.viewport.Scroll(1)
 		}
 
 		if event.Key() == tcell.KeyUp {
-			w.logView.scroll(-1)
+			w.logView.viewport.Scroll(-1)
 		}
 
 		if event.Key() == tcell.KeyPgUp {
-			w.logView.scroll(-50)
+			w.logView.viewport.Scroll(-50)
 		}
 
 		if event.Key() == tcell.KeyPgDn {
-			w.logView.scroll(50)
+			w.logView.viewport.Scroll(50)
 		}
 
 		if event.Key() == tcell.KeyEnd {
-			w.logView.scrollToLatest()
+			w.logView.viewport.ScrollToLatest()
 		}
 
 		if event.Key() == tcell.KeyHome {
-			w.logView.scrollToBeginning()
+			w.logView.viewport.ScrollToBeginning()
 		}
 	}
 
@@ -113,6 +113,8 @@ func (w *MainWindow) handleEvent(event tcell.Event) bool {
 }
 
 func (w *MainWindow) refresh() {
+	width, height := w.screen.Size()
+	drawBox(w.screen, 0, 0, width-1, height-1, tcell.StyleDefault)
 	w.logView.refresh()
 	w.screen.Show()
 }
@@ -120,7 +122,8 @@ func (w *MainWindow) refresh() {
 func (w *MainWindow) resize() {
 	w.screen.Sync()
 	width, height := w.screen.Size()
-	w.logView.setSize(0, 0, width-1, height-2)
+	w.logView.viewport.setRows(height - 2)
+	w.logView.setSize(1, 1, width-1, height-2)
 }
 
 func (w *MainWindow) pollEvents() {
