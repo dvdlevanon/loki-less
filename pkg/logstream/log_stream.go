@@ -2,16 +2,18 @@ package logstream
 
 import (
 	"sync"
+
+	"github.com/op/go-logging"
 )
 
-func NewLogStream() *LogStream {
+var logger = logging.MustGetLogger("logstream")
+
+func NewLogStream(origin LogOrigin) *LogStream {
 	stream := &LogStream{
 		lock:    sync.RWMutex{},
 		origins: newOriginList(),
+		origin:  origin,
 	}
-
-	// chnuk := stream.NewChunk(HOLE_CHUNK)
-	// stream.AddChunk(&chnuk)
 
 	return stream
 }
@@ -21,6 +23,11 @@ type LogStream struct {
 	tail    *LogChunk
 	lock    sync.RWMutex
 	origins originList
+	origin  LogOrigin
+}
+
+func (ls *LogStream) Origin() *LogOrigin {
+	return &ls.origin
 }
 
 func (ls *LogStream) Head() *LogChunk {
@@ -31,13 +38,89 @@ func (ls *LogStream) Tail() *LogChunk {
 	return ls.tail
 }
 
-func (ls *LogStream) NewChunk(t ChunkType) LogChunk {
-	return newLogChunk(t)
+func (ls *LogStream) TimeRequest(nanoTime int64) *ChunkRequest {
+	return &ChunkRequest{
+		Origin:   ls.Origin(),
+		TimeNano: nanoTime,
+		Forward:  true,
+		Limit:    10,
+	}
 }
 
-func (ls *LogStream) AddChunk(chunk *LogChunk) {
+func (ls *LogStream) StartLoading(req ChunkRequest) *LogChunk {
+	loadingChunk := req.NewLoadingChunk()
+	loadingChunk.StartLoading()
+	ls.AddChronological(&loadingChunk)
+	return &loadingChunk
+}
+
+func (ls *LogStream) GetLoading(req ChunkRequest) *LogChunk {
+	cur := ls.head
+	for cur != nil {
+		if req.IsLoadingChunk(cur) {
+			return cur
+		}
+
+		cur = cur.next
+	}
+
+	return nil
+}
+
+func (ls *LogStream) FinishLoading(req ChunkRequest, loaded *LogChunk) *LogChunk {
+	loadingChunk := ls.GetLoading(req)
+	if loadingChunk == nil {
+		return nil
+	}
+
+	loadingChunk.FinishLoading(loaded)
+	ls.DeleteChunk(loadingChunk)
+	ls.AddChronological(loaded)
+	return loadingChunk
+}
+
+func (ls *LogStream) GetOrCreateOrigin(labels map[string]string) *LogOrigin {
+	return ls.origins.getOrCreate(labels)
+}
+
+func (ls *LogStream) AddChronological(chunk *LogChunk) {
 	ls.lock.Lock()
 	defer ls.lock.Unlock()
+
+	logger.Infof("Add chronological chunk %s", chunk)
+
+	cur := ls.head
+	for cur != nil {
+		if chunk.IsAfter(cur) {
+			cur = cur.Next()
+			continue
+		}
+
+		break
+	}
+
+	if cur == nil {
+		ls.appendChunk(chunk)
+		return
+	}
+
+	if chunk.IsBefore(cur) {
+		ls.insertBefore(cur, chunk)
+		return
+	}
+
+	//TODO: handle duplicate and intersect lines
+
+	if chunk.IsBefore(cur) {
+		ls.insertBefore(cur, chunk)
+		return
+	}
+
+	// Something weird happend
+}
+
+func (ls *LogStream) appendChunk(chunk *LogChunk) {
+	logger.Infof("Appending chunk %s", chunk)
 
 	chunk.stream = ls
 	if ls.tail == nil {
@@ -50,31 +133,34 @@ func (ls *LogStream) AddChunk(chunk *LogChunk) {
 	}
 }
 
-func (ls *LogStream) InsertChunk(after *LogChunk, chunk *LogChunk) {
-	ls.lock.Lock()
-	defer ls.lock.Unlock()
+func (ls *LogStream) insertBefore(chunk *LogChunk, newChunk *LogChunk) {
+	logger.Infof("Inserting chunk %s before %s", newChunk, chunk)
 
-	if after == nil {
+	if chunk == nil || newChunk == nil {
 		return
 	}
 
-	chunk.stream = ls
-	chunk.prev = after
-	chunk.next = after.next
+	newChunk.stream = ls
+	newChunk.next = chunk
+	newChunk.prev = chunk.prev
 
-	if after.next != nil {
-		after.next.prev = chunk
+	if chunk.prev != nil {
+		chunk.prev.next = newChunk
+	} else {
+		ls.head = newChunk
 	}
-	after.next = chunk
-
-	if ls.tail == after {
-		ls.tail = chunk
-	}
+	chunk.prev = newChunk
 }
 
-func (ls *LogStream) RemoveChunk(chunk *LogChunk) {
+func (ls *LogStream) DeleteChunk(chunk *LogChunk) {
+	logger.Infof("Deleting chunk %s", chunk)
+
 	ls.lock.Lock()
 	defer ls.lock.Unlock()
+
+	if chunk == nil {
+		return
+	}
 
 	if chunk.prev != nil {
 		chunk.prev.next = chunk.next
@@ -88,32 +174,7 @@ func (ls *LogStream) RemoveChunk(chunk *LogChunk) {
 		ls.tail = chunk.prev
 	}
 
+	chunk.next = nil
+	chunk.prev = nil
 	chunk.stream = nil
-}
-
-func (ls *LogStream) ReplaceChunk(oldChunk, newChunk *LogChunk) {
-	ls.lock.Lock()
-	defer ls.lock.Unlock()
-
-	newChunk.prev = oldChunk.prev
-	newChunk.next = oldChunk.next
-
-	if oldChunk.prev != nil {
-		oldChunk.prev.next = newChunk
-	} else {
-		ls.head = newChunk
-	}
-
-	if oldChunk.next != nil {
-		oldChunk.next.prev = newChunk
-	} else {
-		ls.tail = newChunk
-	}
-
-	oldChunk.stream = nil
-	newChunk.stream = ls
-}
-
-func (ls *LogStream) GetOrCreateOrigin(labels map[string]string) *LogOrigin {
-	return ls.origins.getOrCreate(labels)
 }

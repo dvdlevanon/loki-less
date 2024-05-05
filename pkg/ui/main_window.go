@@ -6,9 +6,12 @@ import (
 
 	"github.com/dvdlevanon/loki-less/pkg/logstream"
 	"github.com/gdamore/tcell"
+	"github.com/op/go-logging"
 )
 
-func NewMainWindow(stream *logstream.LogStream) (*MainWindow, error) {
+var logger = logging.MustGetLogger("ui")
+
+func NewMainWindow(stream *logstream.LogStream, requests chan<- logstream.ChunkRequest) (*MainWindow, error) {
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		return nil, err
@@ -20,7 +23,7 @@ func NewMainWindow(stream *logstream.LogStream) (*MainWindow, error) {
 	screen.EnableMouse()
 	screen.Clear()
 
-	logView := NewLogView(screen, stream)
+	logView := NewLogView(screen, stream, requests)
 	result := &MainWindow{
 		screen:  screen,
 		logView: logView,
@@ -113,10 +116,15 @@ func (w *MainWindow) handleEvent(event tcell.Event) bool {
 }
 
 func (w *MainWindow) refresh() {
+	startMillis := time.Now().UnixMilli()
 	width, height := w.screen.Size()
 	drawBox(w.screen, 0, 0, width-1, height-1, tcell.StyleDefault)
 	w.logView.refresh()
 	w.screen.Show()
+	doneMillis := time.Now().UnixMilli() - startMillis
+	if doneMillis > 1000 {
+		logger.Warningf("Long refresh %d", doneMillis)
+	}
 }
 
 func (w *MainWindow) resize() {

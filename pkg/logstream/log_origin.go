@@ -1,6 +1,6 @@
 package logstream
 
-func newLogOrigin(labels map[string]string) *LogOrigin {
+func NewLogOrigin(labels map[string]string) *LogOrigin {
 	return &LogOrigin{
 		labels: labels,
 	}

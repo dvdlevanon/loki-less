@@ -1,18 +1,25 @@
 package ui
 
 import (
+	"fmt"
+
 	"github.com/dvdlevanon/loki-less/pkg/logstream"
 	"github.com/gdamore/tcell"
 )
 
-func NewLogView(screen tcell.Screen, stream *logstream.LogStream) LogView {
-	return LogView{screen: screen, viewport: NewLogViewPort(stream)}
+func NewLogView(screen tcell.Screen, stream *logstream.LogStream, requests chan<- logstream.ChunkRequest) LogView {
+	return LogView{
+		screen:   screen,
+		viewport: NewLogViewPort(stream, requests),
+		requests: requests,
+	}
 }
 
 type LogView struct {
 	screen              tcell.Screen
 	x, y, columns, rows int
 	viewport            *LogViewPort
+	requests            chan<- logstream.ChunkRequest
 }
 
 func (l *LogView) setSize(x, y, columns, rows int) {
@@ -26,22 +33,36 @@ func (l *LogView) refresh() {
 	row := l.y
 	endRow := l.rows + l.y
 	chunk, offset := l.viewport.refresh()
+	prevChunk := chunk
 
 	for chunk != nil {
 		switch chunk.Type() {
 		case logstream.RAM_CHUNK:
+			prevChunk = chunk
 			chunk, offset, row = l.handleRamChunk(chunk, offset, row, endRow)
+		case logstream.LOADING_CHUNK:
+			chunk, offset, row = l.handleLoading(chunk, row, endRow)
 		default:
 			return
 		}
 	}
+
+	if prevChunk != nil && row < endRow {
+		l.pushRequest(prevChunk.NextRequest())
+	}
+}
+
+func (l *LogView) handleLoading(chunk *logstream.LogChunk, row int, endRow int) (*logstream.LogChunk, int, int) {
+	seconds := chunk.ElapsedLoadingTime() / 1000
+	drawText(l.screen, 1, row, l.columns, endRow, tcell.StyleDefault, fmt.Sprintf("loading... (%d seconds)", seconds))
+	return chunk.Next(), 0, row + 1
 }
 
 func (l *LogView) handleRamChunk(chunk *logstream.LogChunk, offset int, row int, endRow int) (*logstream.LogChunk, int, int) {
 	rowsTotal := l.showChunk(chunk, offset, row)
 
 	if row >= endRow {
-		return nil, 0, 0
+		return nil, 0, row + rowsTotal
 	}
 
 	row = row + rowsTotal
@@ -67,4 +88,12 @@ func (l *LogView) showChunk(chunk *logstream.LogChunk, chunkOffset int, startRow
 	}
 
 	return l.rows
+}
+
+func (l *LogView) pushRequest(request *logstream.ChunkRequest) {
+	if request == nil {
+		return
+	}
+
+	l.requests <- *request
 }

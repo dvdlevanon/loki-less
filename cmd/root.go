@@ -3,10 +3,13 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/dvdlevanon/loki-less/pkg/logstream"
-	"github.com/dvdlevanon/loki-less/pkg/loki"
+	"github.com/dvdlevanon/loki-less/pkg/source"
+	"github.com/dvdlevanon/loki-less/pkg/streamer"
 	"github.com/dvdlevanon/loki-less/pkg/ui"
+	"github.com/dvdlevanon/loki-less/pkg/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -31,12 +34,19 @@ to quickly create a Cobra application.`,
 }
 
 func run() error {
-	requests := make(chan logstream.ChunkRequest, 0)
-	stream := logstream.NewLogStream()
-	streamer := loki.NewLokiStreamer(stream, requests)
+	utils.ConfigureLogger()
+
+	labels := make(map[string]string)
+	labels["app"] = "api-service"
+	origin := logstream.NewLogOrigin(labels)
+
+	requests := make(chan logstream.ChunkRequest)
+	stream := logstream.NewLogStream(*origin)
+	source := source.NewFakeSource(time.Second * 5)
+	streamer := streamer.NewStreamer(stream, requests, source)
 	go streamer.Stream()
 
-	window, err := ui.NewMainWindow(stream)
+	window, err := ui.NewMainWindow(stream, requests)
 	if err != nil {
 		return err
 	}
@@ -45,8 +55,6 @@ func run() error {
 	return nil
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {

@@ -26,7 +26,7 @@ func (o *originList) get(key string) *LogOrigin {
 }
 
 func (o *originList) create(key string, labels map[string]string) *LogOrigin {
-	newOrigin := newLogOrigin(labels)
+	newOrigin := NewLogOrigin(labels)
 
 	o.lock.Lock()
 	defer o.lock.Unlock()
