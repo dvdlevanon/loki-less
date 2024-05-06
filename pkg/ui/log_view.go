@@ -53,13 +53,17 @@ func (l *LogView) refresh() {
 }
 
 func (l *LogView) handleLoading(chunk *logstream.LogChunk, row int, endRow int) (*logstream.LogChunk, int, int) {
+	if row >= endRow {
+		return nil, 0, row + 1
+	}
+
 	seconds := chunk.ElapsedLoadingTime() / 1000
 	drawText(l.screen, 1, row, l.columns, endRow, tcell.StyleDefault, fmt.Sprintf("loading... (%d seconds)", seconds))
 	return chunk.Next(), 0, row + 1
 }
 
 func (l *LogView) handleRamChunk(chunk *logstream.LogChunk, offset int, row int, endRow int) (*logstream.LogChunk, int, int) {
-	rowsTotal := l.showChunk(chunk, offset, row)
+	rowsTotal := l.showChunk(chunk, offset, row, endRow)
 
 	if row >= endRow {
 		return nil, 0, row + rowsTotal
@@ -75,9 +79,9 @@ func (l *LogView) handleRamChunk(chunk *logstream.LogChunk, offset int, row int,
 	return chunk, offset, row
 }
 
-func (l *LogView) showChunk(chunk *logstream.LogChunk, chunkOffset int, startRow int) int {
+func (l *LogView) showChunk(chunk *logstream.LogChunk, chunkOffset int, startRow int, endRow int) int {
 	lineOffest := chunkOffset
-	for i := startRow; i < l.rows; i++ {
+	for i := startRow; i < endRow; i++ {
 		if lineOffest >= len(chunk.Lines()) {
 			return i - startRow
 		}
@@ -87,7 +91,7 @@ func (l *LogView) showChunk(chunk *logstream.LogChunk, chunkOffset int, startRow
 		lineOffest = lineOffest + 1
 	}
 
-	return l.rows
+	return endRow
 }
 
 func (l *LogView) pushRequest(request *logstream.ChunkRequest) {

@@ -43,7 +43,7 @@ func (ls *LogStream) TimeRequest(nanoTime int64) *ChunkRequest {
 		Origin:   ls.Origin(),
 		TimeNano: nanoTime,
 		Forward:  true,
-		Limit:    10,
+		Limit:    0,
 	}
 }
 

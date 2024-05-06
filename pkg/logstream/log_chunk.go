@@ -18,12 +18,17 @@ func NewLoadingChunk(nanoTime int64, loadingForward bool) LogChunk {
 	return LogChunk{chunkType: LOADING_CHUNK, nanoTime: nanoTime, Abba: fmt.Sprintf("LOADING %d", nanoTime), loadingForward: loadingForward}
 }
 
-func NewRamLogChunk(lines []LogLine) LogChunk {
+func NewRamLogChunk(lines []LogLine) *LogChunk {
+	if len(lines) == 0 {
+		logger.Warning("Refute to create a chunk with zero lines")
+		return nil
+	}
+
 	sort.Slice(lines, func(i, j int) bool {
 		return lines[i].nanoTime < lines[j].nanoTime
 	})
 
-	return LogChunk{chunkType: RAM_CHUNK, lines: lines, Abba: fmt.Sprintf("RAM %d-%d", lines[0].nanoTime, lines[len(lines)-1].nanoTime)}
+	return &LogChunk{chunkType: RAM_CHUNK, lines: lines, Abba: fmt.Sprintf("RAM %d-%d", lines[0].nanoTime, lines[len(lines)-1].nanoTime)}
 }
 
 type LogChunk struct {
@@ -78,7 +83,19 @@ func (c *LogChunk) LineCount() int {
 		return c.linesCount
 	}
 
+	if c.chunkType == LOADING_CHUNK {
+		return 1
+	}
+
 	return 0
+}
+
+func (c *LogChunk) IsPrevViewable() bool {
+	return c.prev != nil && c.prev.Viewable()
+}
+
+func (c *LogChunk) IsNextViewable() bool {
+	return c.next != nil && c.next.Viewable()
 }
 
 func (c *LogChunk) Viewable() bool {
@@ -94,7 +111,7 @@ func (c *LogChunk) PrevRequest() *ChunkRequest {
 		Origin:   c.stream.Origin(),
 		TimeNano: c.lines[0].nanoTime - 1,
 		Forward:  false,
-		Limit:    10,
+		Limit:    0,
 	}
 }
 
@@ -107,7 +124,7 @@ func (c *LogChunk) NextRequest() *ChunkRequest {
 		Origin:   c.stream.Origin(),
 		TimeNano: c.lines[len(c.lines)-1].nanoTime + 1,
 		Forward:  true,
-		Limit:    10,
+		Limit:    0,
 	}
 }
 
