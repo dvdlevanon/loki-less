@@ -125,74 +125,24 @@ func (v *LogViewPort) ScrollToLatest() {
 
 func (w *LogViewPort) Scroll(offset int) {
 	logger.Debugf("Scrolling %d", offset)
-	newOffset := w.chunkOffset + offset
 
+	inChunkOffset := w.scrollChunks(w.chunkOffset + offset)
+	w.chunkOffset = w.scrollInChunk(offset > 0, inChunkOffset)
+}
+
+func (w *LogViewPort) scrollChunks(offset int) int {
 	shouldContinue := true
 	for {
 		if !shouldContinue || w.chunk == nil {
-			return
-		} else if newOffset < 0 {
-			newOffset = w.scrollToPrevChunk(newOffset)
-		} else if newOffset != 0 && newOffset >= w.chunk.LineCount() {
-			newOffset, shouldContinue = w.scrollToNextChunk(newOffset)
+			return offset
+		} else if offset < 0 {
+			offset = w.scrollToPrevChunk(offset)
+		} else if offset != 0 && offset >= w.chunk.LineCount() {
+			offset, shouldContinue = w.scrollToNextChunk(offset)
 		} else {
-			break
+			return offset
 		}
 	}
-
-	if newOffset > 0 {
-		beforeRows := w.viewableRows(w.chunk, w.chunkOffset)
-		afterRows := w.viewableRows(w.chunk, newOffset)
-		if afterRows < w.rows && afterRows < beforeRows {
-			cur := w.chunk
-			for cur.Next() != nil {
-				cur = cur.Next()
-			}
-
-			if cur.Type() != logstream.LOADING_CHUNK {
-				w.pushRequest(cur.NextRequest(), cur, 1)
-			}
-
-			for newOffset > 0 && afterRows < w.rows && afterRows < beforeRows {
-				newOffset -= 1
-				afterRows = w.viewableRows(w.chunk, newOffset)
-			}
-		}
-	}
-
-	if newOffset == 0 {
-		if offset > 0 {
-			cur := w.chunk
-			for cur.Next() != nil {
-				cur = cur.Next()
-			}
-
-			if cur.Type() != logstream.LOADING_CHUNK {
-				w.pushRequest(cur.NextRequest(), cur, 1)
-			}
-		}
-	}
-
-	w.chunkOffset = newOffset
-}
-
-func (v *LogViewPort) viewableRows(chunk *logstream.LogChunk, offset int) int {
-	viewableRows := 0
-	cur := chunk
-
-	for cur != nil && viewableRows < v.rows {
-		if cur.LineCount() < offset {
-			viewableRows += cur.LineCount()
-			offset -= cur.LineCount()
-		} else {
-			viewableRows += (cur.LineCount() - offset)
-			offset = 0
-		}
-
-		cur = cur.Next()
-	}
-
-	return viewableRows
 }
 
 func (w *LogViewPort) scrollToPrevChunk(offset int) int {
@@ -216,20 +166,78 @@ func (w *LogViewPort) scrollToNextChunk(offset int) (int, bool) {
 		return 0, true
 	}
 
-	result := offset - w.chunk.LineCount()
-
-	beforeRows := w.viewableRows(w.chunk, w.chunkOffset)
-	afterRows := w.viewableRows(w.chunk.Next(), 0)
-	if afterRows < w.rows && afterRows < beforeRows {
-		if w.chunk.Viewable() && w.chunkOffset < w.chunk.LineCount() {
-			return w.chunk.LineCount() - 1, true
-		}
-		return 0, false
+	if w.isViewportEmptied(w.chunk, w.chunk.Next(), w.chunkOffset, 0) {
+		return w.chunk.LineCount() - 1, false
 	}
 
+	newOffset := offset - w.chunk.LineCount()
 	w.chunk = w.chunk.Next()
 	w.chunkOffset = 0
-	return result, true
+	return newOffset, true
+}
+
+func (w *LogViewPort) scrollInChunk(scrollingForward bool, offsetInChunk int) int {
+	if !scrollingForward {
+		return offsetInChunk
+	}
+
+	if w.isViewportEmptied(w.chunk, w.chunk, w.chunkOffset, offsetInChunk) {
+		w.requestLastChunk(w.chunk)
+		offsetInChunk = w.lastPossibleOffset(w.chunk, w.chunk, w.chunkOffset, offsetInChunk)
+	}
+
+	return offsetInChunk
+}
+
+func (w *LogViewPort) requestLastChunk(chunk *logstream.LogChunk) {
+	if chunk == nil {
+		return
+	}
+
+	for chunk.Next() != nil {
+		chunk = chunk.Next()
+	}
+
+	if chunk.Type() != logstream.LOADING_CHUNK {
+		w.pushRequest(chunk.NextRequest(), chunk, 1)
+	}
+}
+
+func (w *LogViewPort) lastPossibleOffset(beforeChunk, afterChunk *logstream.LogChunk, beforeOffset, afterOffset int) int {
+	for afterOffset > 0 && w.isViewportEmptied(beforeChunk, afterChunk, beforeOffset, afterOffset) {
+		afterOffset -= 1
+	}
+
+	return afterOffset
+}
+
+func (w *LogViewPort) isViewportEmptied(beforeChunk, afterChunk *logstream.LogChunk, beforeOffset, afterOffset int) bool {
+	afterRows := w.viewableRows(afterChunk, afterOffset)
+	if afterRows >= w.rows {
+		return false
+	}
+
+	beforeRows := w.viewableRows(beforeChunk, beforeOffset)
+	return afterRows < beforeRows
+}
+
+func (v *LogViewPort) viewableRows(chunk *logstream.LogChunk, offset int) int {
+	viewableRows := 0
+	cur := chunk
+
+	for cur != nil && viewableRows < v.rows {
+		if cur.LineCount() < offset {
+			viewableRows += cur.LineCount()
+			offset -= cur.LineCount()
+		} else {
+			viewableRows += (cur.LineCount() - offset)
+			offset = 0
+		}
+
+		cur = cur.Next()
+	}
+
+	return viewableRows
 }
 
 func (w *LogViewPort) pushRequest(request *logstream.ChunkRequest, chunk *logstream.LogChunk, tryToScroll int) {
