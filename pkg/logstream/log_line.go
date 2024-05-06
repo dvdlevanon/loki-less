@@ -2,7 +2,8 @@ package logstream
 
 import (
 	"fmt"
-	"time"
+
+	"github.com/dvdlevanon/loki-less/pkg/utils"
 )
 
 func NewLogLine(origin *LogOrigin, nano_time int64, line string) LogLine {
@@ -32,8 +33,5 @@ func (l *LogLine) Text() string {
 }
 
 func (l *LogLine) FormattedLine() string {
-	t := time.Unix(0, l.nanoTime)
-	formattedTime := t.Format("2006-01-02 15:04:05")
-
-	return fmt.Sprintf("%s\t%s", formattedTime, l.text)
+	return fmt.Sprintf("%s\t%s", utils.FormatNanoTime(l.nanoTime), l.text)
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/dvdlevanon/loki-less/pkg/utils"
 )
 
 type ChunkType int
@@ -28,7 +30,8 @@ func NewRamLogChunk(lines []LogLine) *LogChunk {
 		return lines[i].nanoTime < lines[j].nanoTime
 	})
 
-	return &LogChunk{chunkType: RAM_CHUNK, lines: lines, Abba: fmt.Sprintf("RAM %d-%d", lines[0].nanoTime, lines[len(lines)-1].nanoTime)}
+	return &LogChunk{chunkType: RAM_CHUNK, lines: lines, Abba: fmt.Sprintf(
+		"RAM %s-%s", utils.FormatNanoTime(lines[0].nanoTime), utils.FormatNanoTime(lines[len(lines)-1].nanoTime))}
 }
 
 type LogChunk struct {
@@ -161,7 +164,7 @@ func (c *LogChunk) UpperNanoTime() int64 {
 }
 
 func (c *LogChunk) IsAfter(other *LogChunk) bool {
-	return c.UpperNanoTime() > other.LowerNanoTime()
+	return c.LowerNanoTime() > other.UpperNanoTime()
 }
 
 func (c *LogChunk) IsBefore(other *LogChunk) bool {
@@ -189,6 +192,11 @@ func (c *LogChunk) LoadingForward() bool {
 	return c.loadingForward
 }
 
+func (c *LogChunk) TimesString() string {
+	return fmt.Sprintf("%s-%s", utils.FormatNanoTime(c.LowerNanoTime()),
+		utils.FormatNanoTime(c.UpperNanoTime()))
+}
+
 func (c *LogChunk) String() string {
 	if c.chunkType == LOADING_CHUNK {
 		if c.loadedChunk != nil {
@@ -203,4 +211,36 @@ func (c *LogChunk) String() string {
 	}
 
 	return "Chunk String Not implemented"
+}
+
+func (c *LogChunk) lineTimeOrElse(index int, fallback int64) int64 {
+	if index < len(c.lines) {
+		return c.lines[index].nanoTime
+	}
+
+	return fallback
+}
+
+func (c *LogChunk) mergeLines(lines []LogLine) {
+	newLines := make([]LogLine, 0)
+	myIndex := 0
+	otherIndex := 0
+
+	for otherIndex < len(lines) {
+		otherTime := lines[otherIndex].nanoTime
+		for otherTime > c.lineTimeOrElse(myIndex, otherTime) {
+			newLines = append(newLines, c.lines[myIndex])
+			myIndex++
+		}
+
+		newLines = append(newLines, lines[otherIndex])
+		otherIndex++
+	}
+
+	for myIndex < len(c.lines) {
+		newLines = append(newLines, c.lines[myIndex])
+		myIndex++
+	}
+
+	c.lines = newLines
 }

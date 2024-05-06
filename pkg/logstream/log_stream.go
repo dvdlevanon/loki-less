@@ -73,17 +73,17 @@ func (ls *LogStream) FinishLoading(req ChunkRequest, loaded *LogChunk) *LogChunk
 		return nil
 	}
 
-	loadingChunk.FinishLoading(loaded)
 	ls.DeleteChunk(loadingChunk)
-	ls.AddChronological(loaded)
-	return loadingChunk
+	addedChunk := ls.AddChronological(loaded)
+	loadingChunk.FinishLoading(addedChunk)
+	return addedChunk
 }
 
 func (ls *LogStream) GetOrCreateOrigin(labels map[string]string) *LogOrigin {
 	return ls.origins.getOrCreate(labels)
 }
 
-func (ls *LogStream) AddChronological(chunk *LogChunk) {
+func (ls *LogStream) AddChronological(chunk *LogChunk) *LogChunk {
 	ls.lock.Lock()
 	defer ls.lock.Unlock()
 
@@ -101,22 +101,16 @@ func (ls *LogStream) AddChronological(chunk *LogChunk) {
 
 	if cur == nil {
 		ls.appendChunk(chunk)
-		return
+		return chunk
 	}
 
 	if chunk.IsBefore(cur) {
 		ls.insertBefore(cur, chunk)
-		return
+		return chunk
 	}
 
-	//TODO: handle duplicate and intersect lines
-
-	if chunk.IsBefore(cur) {
-		ls.insertBefore(cur, chunk)
-		return
-	}
-
-	// Something weird happend
+	cur.mergeLines(chunk.lines)
+	return cur
 }
 
 func (ls *LogStream) appendChunk(chunk *LogChunk) {

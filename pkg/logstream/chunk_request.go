@@ -9,6 +9,14 @@ type ChunkRequest struct {
 	Limit    int
 }
 
+func (r *ChunkRequest) Direction() int64 {
+	if r.Forward {
+		return 1
+	} else {
+		return -1
+	}
+}
+
 func (r *ChunkRequest) NewLoadingChunk() LogChunk {
 	return NewLoadingChunk(r.TimeNano, r.Forward)
 }
