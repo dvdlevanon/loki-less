@@ -77,6 +77,10 @@ func (c *LogChunk) Lines() []LogLine {
 	return c.lines
 }
 
+func (c *LogChunk) Filename() string {
+	return c.filename
+}
+
 func (c *LogChunk) LineCount() int {
 	if c.chunkType == RAM_CHUNK {
 		return len(c.lines)

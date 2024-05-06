@@ -27,6 +27,7 @@ func (l *LogView) setSize(x, y, columns, rows int) {
 	l.y = y
 	l.columns = columns
 	l.rows = rows
+	l.viewport.setRows(rows)
 }
 
 func (l *LogView) refresh() {
@@ -53,7 +54,7 @@ func (l *LogView) refresh() {
 }
 
 func (l *LogView) handleLoading(chunk *logstream.LogChunk, row int, endRow int) (*logstream.LogChunk, int, int) {
-	if row >= endRow {
+	if row > endRow {
 		return nil, 0, row + 1
 	}
 
@@ -91,7 +92,7 @@ func (l *LogView) showChunk(chunk *logstream.LogChunk, chunkOffset int, startRow
 		lineOffest = lineOffest + 1
 	}
 
-	return endRow
+	return endRow - 1
 }
 
 func (l *LogView) pushRequest(request *logstream.ChunkRequest) {

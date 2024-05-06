@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/dvdlevanon/loki-less/pkg/logstream"
@@ -70,9 +69,6 @@ func (w *MainWindow) handleEvent(event tcell.Event) bool {
 	case *tcell.EventResize:
 		w.resize()
 	case *tcell.EventKey:
-		width, _ := w.screen.Size()
-		drawText(w.screen, width-100, 1, width, 2, tcell.StyleDefault, fmt.Sprintf("%v", event.Name()))
-
 		if event.Key() == tcell.KeyRune {
 			if event.Rune() == 'q' {
 				return false
@@ -130,8 +126,9 @@ func (w *MainWindow) refresh() {
 func (w *MainWindow) resize() {
 	w.screen.Sync()
 	width, height := w.screen.Size()
-	w.logView.viewport.setRows(height - 2)
-	w.logView.setSize(1, 1, width-1, height-2)
+	header := 5
+	footer := 1
+	w.logView.setSize(1, header, width-1, height-header-footer)
 }
 
 func (w *MainWindow) pollEvents() {

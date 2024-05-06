@@ -8,11 +8,12 @@ import (
 	"github.com/dvdlevanon/loki-less/pkg/streamer"
 )
 
-func NewFakeSource(delay time.Duration, defaultLimit, intersectFactor int) *FakeSource {
+func NewFakeSource(delay time.Duration, defaultLimit, intersectFactor, maxChunks int) *FakeSource {
 	return &FakeSource{
 		delay:           delay,
 		defaultLimit:    defaultLimit,
 		intersectFactor: intersectFactor,
+		maxChunks:       maxChunks,
 	}
 }
 
@@ -21,6 +22,7 @@ type FakeSource struct {
 	defaultLimit    int
 	chunksCounter   int
 	intersectFactor int
+	maxChunks       int
 }
 
 func (s *FakeSource) getLinesCount(req logstream.ChunkRequest) int {
@@ -41,6 +43,11 @@ func (s *FakeSource) getNanoTime(req logstream.ChunkRequest, interval, linesCoun
 
 func (s *FakeSource) Next(req logstream.ChunkRequest, doneChannel chan<- streamer.SourceResponse) {
 	time.Sleep(s.delay)
+
+	if s.maxChunks != 0 && s.chunksCounter >= s.maxChunks {
+		return
+	}
+
 	lines := make([]logstream.LogLine, 0)
 
 	timeInterval := 1000000000

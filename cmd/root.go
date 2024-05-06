@@ -42,7 +42,7 @@ func run() error {
 
 	requests := make(chan logstream.ChunkRequest)
 	stream := logstream.NewLogStream(*origin)
-	source := source.NewFakeSource(time.Second, 10, 2)
+	source := source.NewFakeSource(time.Second*1, 20, 0, 0)
 	streamer := streamer.NewStreamer(stream, requests, source)
 	go streamer.Stream()
 
